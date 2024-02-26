@@ -1,0 +1,137 @@
+% runs artifact detection tools on bids-curated fmri data
+
+analysisname = 'analysis';
+projname = 'proj';
+projdir = 'proj';
+bidsdir = 'bids';
+
+% thresholds
+global_threshold = 3;
+motion_threshold = 0.5;
+
+tasks = {'faces', 'reward', 'rest'};
+subDir = dir(fullfile(bidsdir, 'sub-*'));
+errlog = {}; 
+outlierlog = {};
+
+% subject loop
+for i = 1:numel(subDir)
+    % identify sessions
+    sessionDirs = dir(fullfile(subDir(i).folder, subDir(i).name, 'ses-*'));
+    if isempty(sessionDirs) 
+        sessions = {''}; 
+    else
+        sessions = {sessionDirs.name}; 
+    end
+    
+    % session loop
+    for sessIdx = 1:length(sessions)
+        session = sessions{sessIdx};
+        if isempty(session)
+            sessionPath = fullfile(subDir(i).folder, subDir(i).name, 'func');
+        else
+            sessionPath = fullfile(subDir(i).folder, subDir(i).name, session, 'func');
+        end
+        
+        % task loop
+        for taskIdx = 1:length(tasks)
+            taskName = tasks{taskIdx};
+            niiSearchPattern = fullfile(sessionPath, 'run*', sprintf('*%s*desc-preprocessed_bold.nii', taskName));
+
+            % find func
+            niiDir = dir(niiSearchPattern);
+            if isempty(niiDir)
+                niiDir = dir([niiSearchPattern '.gz']);
+                if isempty(niiDir)
+                    errorMsg = sprintf('%s: %s %s desc-preprocessed_bold.nii (or .nii.gz) file not found.', subDir(i).name, session, taskName);
+                    fprintf('%s\n', errorMsg);
+                    errlog{end+1,1} = errorMsg;
+                    continue;
+                else
+                    unix(['gunzip ' fullfile(niiDir.folder, niiDir.name)]);
+                    niiDir = dir(niiSearchPattern);
+                end
+            end
+
+            % locate rp.txt
+            motionDir = dir(fullfile(niiDir.folder, sprintf('rp*%s*txt', taskName)));
+            if isempty(motionDir)
+                errorMsg = sprintf('%s: %s %s rp*.txt motion file not found.', subDir(i).name, session, taskName);
+                fprintf('%s\n', errorMsg);
+                errlog{end+1,1} = errorMsg;
+                continue;
+            end
+            
+            cd(niiDir.folder);
+            
+            artPath = fullfile(niiDir.folder, 'art');
+            if ~exist(artPath,'dir'), mkdir(artPath); end
+            fid = fopen(fullfile(artPath, 'art.cfg'),'wt');
+            
+            fprintf(fid,'sessions: %d\n', 1);
+            fprintf(fid,'global_mean: %d\n', 1); 
+            fprintf(fid,['global_threshold: ' num2str(global_threshold) '\n']); 
+            fprintf(fid,['motion_threshold: ' num2str(motion_threshold) '\n']); 
+            fprintf(fid,'motion_file_type: %d\n', 0); 
+            fprintf(fid,'motion_fname_from_image_fname: 0\n'); 
+            fprintf(fid,'use_diff_motion: %d\n', 1);
+            fprintf(fid,'use_diff_global: %d\n', 1);
+            fprintf(fid,'use_norms: %d\n', 1);
+            fprintf(fid,'image_dir: %s\n', niiDir.folder);
+            fprintf(fid,'motion_dir: %s\n', niiDir.folder);
+            fprintf(fid,'output_dir: %s\n', artPath);
+            fprintf(fid,'end\n\n');
+            fprintf(fid,['session 1 image ' niiDir.name '\n\n']);
+            fprintf(fid,['session 1 motion ' motionDir.name '\n\n']);
+            fprintf(fid,'end\n');
+            fclose(fid);
+            
+            try
+                [output, h] = evalc('art(''sess_file'', fullfile(artPath, ''art.cfg''))');
+                export_fig(fullfile(artPath, 'art_overview.pdf'), '-pdf');
+                if ishandle(h), close(h); end
+                unix(['mv ' fullfile(niiDir.folder, 'art_*') ' ' artPath]);
+                
+                unix(['gzip ' fullfile(niiDir.folder, niiDir.name)]);
+                
+                outlierPattern = 'Outlier detection: .* identified outliers';
+                matches = regexp(output, outlierPattern, 'match');
+                for match = matches
+                    outlierMsg = sprintf('%s: %s %s - %s', subDir(i).name, session, taskName, match{1});
+                    disp(outlierMsg);
+                    outlierlog{end+1,1} = outlierMsg;
+                end
+            catch
+                errorMsg = sprintf('%s: %s %s - ART processing failed.', subDir(i).name, session, taskName);
+                errlog{end+1,1} = errorMsg;
+                continue;
+            end
+        end
+    end
+end
+
+% log errors
+if ~isempty(errlog)
+    disp('errors encountered:');
+    for j = 1:length(errlog)
+        disp(errlog{j});
+    end
+    artLogPath = fullfile(projdir, 'art_log.txt');
+    fid = fopen(artLogPath, 'wt');
+    for j = 1:length(errlog)
+        fprintf(fid, '%s\n', errlog{j});
+    end
+    fclose(fid);
+    disp(['errors logged in ' artLogPath]);
+end
+% log outliers
+if ~isempty(outlierlog)
+    outlierLogPath = fullfile(projdir, 'outlier_log.txt');
+    fid = fopen(outlierLogPath, 'wt');
+    for idx = 1:length(outlierlog)
+        fprintf(fid, '%s\n', outlierlog{idx});
+    end
+    fclose(fid);
+    disp(['outlier detection logged in ' outlierLogPath]);
+end
+
