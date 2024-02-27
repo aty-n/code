@@ -2,7 +2,7 @@ code from previous projects
 
 topup.m: creates blipup/blipdown fieldmaps using FSL's topup and matlab
 
-firstlevel_conn.m: performs subject-level preprocessing and analysis using CONN
+run_conn.m: performs subject-level preprocessing and analysis using CONN
 
 scale_hertz.m: scales a hz fieldmap to rads for use in spm12 preprocessing
 
