@@ -1,0 +1,159 @@
+% set variables and parameters
+analysisname = 'BL_ROIxROI';
+projdir = '/indirect/mrdata/proj-np1atyn/';
+bidsdir = fullfile(projdir, 'derivatives');
+codedir = fullfile(projdir, 'code/conn');
+analysisdir = fullfile(projdir, 'analysis');
+TR = 2.0;
+tasks = {'TASK1', 'TASK2', 'TASK3'};
+subjectFolders = dir(fullfile(bidsdir, 'sub-*'));
+NSUBJECTS = length(subjectFolders);
+
+% initialize data variables
+FUNC_FILE = cell(NSUBJECTS, 1);
+ANAT_FILE = cell(NSUBJECTS, 1);
+MOTION_FILE = cell(NSUBJECTS, 1);
+ART_FILE = cell(NSUBJECTS, 1);
+
+% set up subject data structure
+for subID = 1:NSUBJECTS
+    subjectFolderName = subjectFolders(subID).name;
+    actualSessions = {}; 
+
+    % define sessions
+    possibleSessions = {'', 'ses-NAME1', 'ses-NAME2', 'ses-NAME3', 'ses-NAME4'};
+    %if ~isempty(dir(fullfile(bidsdir, subjectFolderName, 'ses-NAME4')))
+    %    possibleSessions{end+1} = 'ses-NAME5'; % in case ses-NAME4, check for ses-NAME5
+    %end
+
+    % identify sessions
+    for i = 1:length(possibleSessions)
+        sessionName = possibleSessions{i};
+        if isempty(sessionName)
+            sessionPath = fullfile(bidsdir, subjectFolderName, 'func');
+        else
+            sessionPath = fullfile(bidsdir, subjectFolderName, sessionName, 'func');
+        end
+        if exist(sessionPath, 'dir')
+            actualSessions{end+1} = sessionName;
+        end
+    end
+
+    tempFunctionalFiles = cell(numel(actualSessions), 1);
+    tempStructuralFiles = cell(numel(actualSessions), 1);
+    tempMotionFiles = cell(numel(actualSessions), 1);
+    tempARTFiles = cell(numel(actualSessions), 1);
+   
+    % session loop
+    for sessIdx = 1:numel(actualSessions)
+        sessionName = actualSessions{sessIdx};
+        allTasksForSession = {};
+
+        % task loop and define func directory
+        for taskIdx = 1:length(tasks)
+            taskName = tasks{taskIdx};
+            if isempty(sessionName)
+                funcPattern = fullfile(bidsdir, subjectFolderName, 'func', 'run*', ['sub*' taskName '*IXI549*_bold.nii']); 
+            else
+                funcPattern = fullfile(bidsdir, subjectFolderName, sessionName, 'func', 'run*', ['sub*' taskName '*IXI549*_bold.nii']); 
+            end
+            funcFiles = dir(funcPattern);
+            
+            % locate func files
+            for f = 1:length(funcFiles)
+                funcFullPath = fullfile(funcFiles(f).folder, funcFiles(f).name);
+                allTasksForSession{end+1} = funcFullPath;
+
+                % locate motion file
+                motionPattern = fullfile(funcFiles(f).folder, ['rp_st*' taskName '*.txt']);
+                motionFiles = dir(motionPattern);
+                if ~isempty(motionFiles)
+                    tempMotionFiles{sessIdx}{end+1} = fullfile(motionFiles(1).folder, motionFiles(1).name);
+                else
+                    tempMotionFiles{sessIdx}{end+1} = {};
+                end
+
+                % locate ART output
+                artPattern = fullfile(funcFiles(f).folder, 'art', ['art_regression_outliers_*' taskName '*.mat']);
+                artFiles = dir(artPattern);
+                if ~isempty(artFiles)
+                    tempARTFiles{sessIdx}{end+1} = fullfile(artFiles(1).folder, artFiles(1).name);
+                else
+                    tempARTFiles{sessIdx}{end+1} = {};
+                end
+
+            end
+        end
+
+        tempFunctionalFiles{sessIdx} = allTasksForSession;
+
+        % define anat directory
+        if ~isempty(sessionName)
+            structPattern = fullfile(bidsdir, subjectFolderName, sessionName, 'anat', sprintf('sub*IXI549_T1w.nii'));
+        else
+            structPattern = fullfile(bidsdir, subjectFolderName, 'anat', sprintf('sub*IXI549_T1w.nii'));
+        end
+        structFiles = dir(structPattern);
+
+        % locate anat files
+        if ~isempty(structFiles)
+            tempStructuralFiles{sessIdx} = fullfile(structFiles(1).folder, structFiles(1).name);
+        else
+            tempStructuralFiles{sessIdx} = {};
+        end
+    end
+
+    % fill data variables
+    FUNC_FILE{subID} = tempFunctionalFiles;
+    ANAT_FILE{subID} = tempStructuralFiles;
+    MOTION_FILE{subID} = tempMotionFiles;
+    ART_FILE{subID} = tempARTFiles;
+
+end
+
+% change structure in case taskx1
+for subID = 1:NSUBJECTS
+    FUNC_FILE{subID} = reshape(vertcat(FUNC_FILE{subID}{:}), [], 1);
+    ART_FILE{subID} = reshape(vertcat(ART_FILE{subID}{:}), [], 1);
+    MOTION_FILE{subID} = reshape(vertcat(MOTION_FILE{subID}{:}), [], 1);
+    if iscell(ANAT_FILE{subID}) && ~isempty(ANAT_FILE{subID})
+        ANAT_FILE{subID} = ANAT_FILE{subID}(find(~cellfun(@isempty, ANAT_FILE{subID}), 1, 'first'));
+    end
+end
+
+% tidy up workspace and prepare batch
+clearvars -except FUNC_FILE ANAT_FILE ART_FILE MOTION_FILE TR NSUBJECTS analysisname projdir codedir analysisdir batch
+clear batch;
+
+% set up parameters and data
+batch.filename = fullfile(analysisdir, [analysisname, '.mat']);
+batch.Setup.isnew = 1;
+batch.Setup.nsubjects = NSUBJECTS;
+batch.Setup.RT = TR;
+batch.Setup.analyses = 1;
+batch.Setup.conditions.names = {'bold'};
+batch.Setup.covariates.names = {'Motion', 'Outliers'};
+batch.Setup.functionals = FUNC_FILE';
+batch.Setup.structurals = ANAT_FILE;
+batch.Setup.covariates.files = {MOTION_FILE, ART_FILE};
+batch.Setup.rois.files{1} = {'/conn/atlas/shen_268.nii'};
+batch.Setup.rois.multiplelabels = 1;
+batch.Setup.done = 1;
+batch.Setup.overwrite = 'Yes';
+
+% denoising
+batch.Denoising.confounds.names = {'Motion', 'Outliers', 'White Matter', 'CSF'};
+batch.Denoising.confounds.dimensions = {Inf Inf 5 5};
+batch.Denoising.filter = [0.008, 0.09];
+batch.Denoising.done = 1;
+batch.Denoising.overwrite = 'Yes';
+
+% first-level analysis
+batch.Analysis.type = 1;
+batch.Analysis.measure = 1;
+batch.Analysis.done = 1;
+batch.Analysis.overwrite = 'Yes';
+
+% save and start processing
+save(fullfile(codedir, [analysisname, '.mat']), 'batch');
+conn_batch(batch);
