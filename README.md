@@ -12,3 +12,6 @@ dual_echo.m: combines two epi echoes to a single bold file
 
 preproc_lesionfriendly.m: spm12 batch script that handles a cohort of mixed lesion/no lesion participants with available lesion masks
 
+physio_preproc.m: processes physiologs for usage in bold-signal weighing for olfactory paradigms
+
+run_physio.m: loops physio_preproc.m function across subjects
