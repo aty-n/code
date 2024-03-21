@@ -16,4 +16,4 @@ preproc_lesionfriendly.m: spm12 batch script that handles a cohort of mixed lesi
 
 physio_preproc.m: processes physiologs for usage in bold-signal weighing for olfactory paradigms
 
-run_physio.m: loops physio_preproc.m function across subjects
+run_physio.m: loops physio_preproc.m function across subjects and separates inhalation peaks into conditions
