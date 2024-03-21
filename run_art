@@ -1,15 +1,14 @@
-% runs artifact detection tools on bids-curated fmri data
-
-analysisname = 'analysis';
-projname = 'proj';
-projdir = 'proj';
-bidsdir = 'bids';
+% setup
+analysisname = 'analysisname';
+projname = 'projectname';
+projdir = '/path/to/project';
+bidsdir = '/path/to/bids';
 
 % thresholds
 global_threshold = 3;
 motion_threshold = 0.5;
 
-tasks = {'faces', 'reward', 'rest'};
+tasks = {'task1', 'task2', 'task3'};
 subDir = dir(fullfile(bidsdir, 'sub-*'));
 errlog = {}; 
 outlierlog = {};
@@ -112,26 +111,45 @@ end
 
 % log errors
 if ~isempty(errlog)
-    disp('errors encountered:');
-    for j = 1:length(errlog)
-        disp(errlog{j});
-    end
-    artLogPath = fullfile(projdir, 'art_log.txt');
+    disp(['errors encountered: ' num2str(length(errlog))]);
+    
+    artLogPath = fullfile(projdir, 'log_art.csv');
     fid = fopen(artLogPath, 'wt');
+    fprintf(fid, 'SubjectID,Session,Task,Error\n'); 
     for j = 1:length(errlog)
-        fprintf(fid, '%s\n', errlog{j});
+        parts = strsplit(errlog{j}, ' ');
+        SubjectID = parts{1};
+        Session = parts{2};
+        Task = parts{3};
+        ErrorMessage = strjoin(parts(4:end), ' ');
+        fprintf(fid, '%s,%s,%s,"%s"\n', SubjectID, Session, Task, ErrorMessage);
     end
     fclose(fid);
     disp(['errors logged in ' artLogPath]);
 end
+
 % log outliers
 if ~isempty(outlierlog)
-    outlierLogPath = fullfile(projdir, 'outlier_log.txt');
+    outlierLogPath = fullfile(projdir, 'log_outliers.csv');
     fid = fopen(outlierLogPath, 'wt');
+    fprintf(fid, 'SubjectID,Session,Task,Outliers\n');
     for idx = 1:length(outlierlog)
-        fprintf(fid, '%s\n', outlierlog{idx});
+        parts = strsplit(outlierlog{idx}, ' ');
+        SubjectID = parts{1};
+        Session = parts{2};
+        Task = parts{3};
+        outlierInfo = strjoin(parts(5:end), ' ');
+        outliersMatch = regexp(outlierInfo, '\d+', 'match');
+        OutliersCount = '0';
+        if ~isempty(outliersMatch)
+            OutliersCount = outliersMatch{1};
+        end
+        fprintf(fid, '%s,%s,%s,%s\n', SubjectID, Session, Task, OutliersCount);
     end
     fclose(fid);
-    disp(['outlier detection logged in ' outlierLogPath]);
+    disp(['outliers logged in ' outlierLogPath]);
 end
+
+
+
 
