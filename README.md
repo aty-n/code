@@ -4,6 +4,8 @@ topup.m: creates blipup/blipdown fieldmaps using FSL's topup and matlab
 
 run_conn.m: performs subject-level preprocessing and analysis using CONN
 
+run_datacheck.m: creates a handy log of file names and amount of volumes per subject/task/session to check for data integrity
+
 run_art.m: runs artifact detection tools for a bids-curated dataset and logs results
 
 scale_hertz.m: scales a hz fieldmap to rads for use in spm12 preprocessing
