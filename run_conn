@@ -1,11 +1,11 @@
-% set variables and parameters
-analysisname = 'BL_ROIxROI';
-projdir = '/indirect/mrdata/proj-np1atyn/';
+% setup
+analysisname = 'BL_nxxx_shen268_ROIxROI';
+projdir = '/path/to/project/';
 bidsdir = fullfile(projdir, 'derivatives');
-codedir = fullfile(projdir, 'code/conn');
+codedir = fullfile(projdir, 'code/conn/mat');
 analysisdir = fullfile(projdir, 'analysis');
 TR = 2.0;
-tasks = {'TASK1', 'TASK2', 'TASK3'};
+tasks = {'task1', 'task2', 'task3'};
 subjectFolders = dir(fullfile(bidsdir, 'sub-*'));
 NSUBJECTS = length(subjectFolders);
 
@@ -21,10 +21,13 @@ for subID = 1:NSUBJECTS
     actualSessions = {}; 
 
     % define sessions
-    possibleSessions = {'', 'ses-NAME1', 'ses-NAME2', 'ses-NAME3', 'ses-NAME4'};
-    %if ~isempty(dir(fullfile(bidsdir, subjectFolderName, 'ses-NAME4')))
-    %    possibleSessions{end+1} = 'ses-NAME5'; % in case ses-NAME4, check for ses-NAME5
-    %end
+    possibleSessions = {'ses-01', 'ses-BL'};
+    if ~isempty(dir(fullfile(bidsdir, subjectFolderName, 'ses-01')))
+        possibleSessions{end+1} = 'ses-02'; % in case ses-01, check for ses-02
+    end
+    if ~isempty(dir(fullfile(bidsdir, subjectFolderName, 'ses-BL')))
+        possibleSessions{end+1} = 'ses-FU'; % in case ses-BL, check for ses-FU
+    end
 
     % identify sessions
     for i = 1:length(possibleSessions)
@@ -122,7 +125,7 @@ for subID = 1:NSUBJECTS
 end
 
 % tidy up workspace and prepare batch
-clearvars -except FUNC_FILE ANAT_FILE ART_FILE MOTION_FILE TR NSUBJECTS analysisname projdir codedir analysisdir batch
+clearvars -except FUNC_FILE ANAT_FILE ART_FILE MOTION_FILE TR NSUBJECTS analysisname projdir codedir analysisdir batch tasks
 clear batch;
 
 % set up parameters and data
@@ -131,15 +134,52 @@ batch.Setup.isnew = 1;
 batch.Setup.nsubjects = NSUBJECTS;
 batch.Setup.RT = TR;
 batch.Setup.analyses = 1;
-batch.Setup.conditions.names = {'bold'};
+
+% set up conditions
+batch.Setup.conditions.names = {'task1', 'task2', 'task3'};
+onsets = cell(1, length(tasks)); 
+durations = cell(1, length(tasks)); 
+for condIdx = 1:length(tasks)
+    onsets{condIdx} = cell(NSUBJECTS, 1);
+    durations{condIdx} = cell(NSUBJECTS, 1);
+    for subID = 1:NSUBJECTS
+        numSessions = length(FUNC_FILE{subID});
+        onsets{condIdx}{subID} = cell(1, numSessions);
+        durations{condIdx}{subID} = cell(1, numSessions);
+        for sessIdx = 1:numSessions
+            onsets{condIdx}{subID}{sessIdx} = ''; 
+            durations{condIdx}{subID}{sessIdx} = ''; 
+        end
+    end
+end
+for subID = 1:NSUBJECTS
+    for sessIdx = 1:length(FUNC_FILE{subID})
+        funcFilePath = FUNC_FILE{subID}{sessIdx};
+        if contains(funcFilePath, 'task1')
+            onsets{1}{subID}{sessIdx} = 0; 
+            durations{1}{subID}{sessIdx} = Inf; 
+        elseif contains(funcFilePath, 'task2')
+            onsets{2}{subID}{sessIdx} = 0; 
+            durations{2}{subID}{sessIdx} = Inf; 
+        elseif contains(funcFilePath, 'task3')
+            onsets{3}{subID}{sessIdx} = 0;
+            durations{3}{subID}{sessIdx} = Inf; 
+        end
+    end
+end
+batch.Setup.conditions.onsets = onsets;
+batch.Setup.conditions.durations = durations;
+
+% continue with normal set up
 batch.Setup.covariates.names = {'Motion', 'Outliers'};
 batch.Setup.functionals = FUNC_FILE';
 batch.Setup.structurals = ANAT_FILE;
 batch.Setup.covariates.files = {MOTION_FILE, ART_FILE};
-batch.Setup.rois.files{1} = {'/conn/atlas/shen_268.nii'};
+batch.Setup.rois.files{1} = {'/path/to/conn/rois/shen_268.nii'};
 batch.Setup.rois.multiplelabels = 1;
 batch.Setup.done = 1;
-batch.Setup.overwrite = 'Yes';
+batch.Setup.overwrite = 'No';
+batch.Setup.conditions.missingdata = 1;
 
 % denoising
 batch.Denoising.confounds.names = {'Motion', 'Outliers', 'White Matter', 'CSF'};
